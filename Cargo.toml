@@ -9,3 +9,6 @@ edition = "2021"
 tui = "0.19"
 crossterm = "0.25"
 term_size = "0.3.2"
+regex = "1.1.9"
+cute = "0.3.0"
+

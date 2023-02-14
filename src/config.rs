@@ -1,5 +1,7 @@
 use std::{
+  fs,
   io,
+  io::{BufRead},
   error::Error, 
 };
 use tui::{
@@ -12,9 +14,7 @@ use crossterm::{
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
-use crate::{
-  view_manager::ViewManager
-};
+use crate::terminal_state::{TerminalState, parse_input, ui};
 
 pub struct Config {
   pub file_path: String,
@@ -55,20 +55,31 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
     LeaveAlternateScreen,
     DisableMouseCapture
   )?;
-  terminal.show_cursor().unwrap();
 
   Ok(())
 }
 
 fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
-  let mut view_manager = ViewManager::new(file_path);
+  // TODO: 
+  //  - Implement jump to next search pattern
+  //  - Handle empty serach pattern
 
-  while view_manager.running() {
-    terminal.draw(|f| view_manager.ui(f))?;
+  let file = io::BufReader::new(fs::File::open(&file_path).expect("Could not open file."));
+  let num_lines = file.lines().count() as u16;
+  let content = fs::read_to_string(&file_path).expect("Could not open file.");
+
+  let mut terminal_state = TerminalState::new(num_lines, &content);
+
+  while terminal_state.running {
+    terminal.draw(|f| ui(f, &terminal_state))?;
+
     if let Event::Key(key) = event::read()? {
-      view_manager.parse_input(key.code) 
+      terminal_state = parse_input(key.code, terminal_state)    
+    }
+
+    if terminal_state.normal_mode {
+      terminal.hide_cursor().unwrap();
     }
   }
-
   Ok(())
 }

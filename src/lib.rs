@@ -1,2 +1,2 @@
 pub mod config;
-pub mod view_manager;
+pub mod terminal_state;
