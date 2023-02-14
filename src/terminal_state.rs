@@ -30,7 +30,7 @@ impl<'a> TerminalState<'a> {
       running: true,
       normal_mode: true,
       scroll_offset: 0,
-      num_lines: num_lines_in,
+      num_lines: num_lines_in, // change to represent bottom of file
       content: content_in,
       prompt: String::from(":"),
       text: Text::from(content_in.clone())
@@ -71,6 +71,8 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
     KeyCode::Up => terminal_state.scroll_offset = scroll_up(terminal_state.scroll_offset),
     KeyCode::Down => terminal_state.scroll_offset = scroll_down(terminal_state.scroll_offset, terminal_state.num_lines),
     KeyCode::Char('q') => terminal_state.running = false,
+    KeyCode::Char('g') => terminal_state.scroll_offset = 0,
+    KeyCode::Char('G') => terminal_state.scroll_offset = end_of_file_offset(terminal_state.num_lines), 
     KeyCode::Char(c) if command_character(c) => {
       terminal_state.normal_mode = false;
       terminal_state.prompt = String::from(c);
@@ -104,6 +106,10 @@ pub fn pop_back(mut command: String) -> String {
     command.pop();
   }
   command
+}
+
+fn end_of_file_offset(num_lines: u16) -> u16 {
+  (num_lines + SCREEN_END_OFFSET) - get_terminal_height()
 }
 
 fn scroll_down(mut scroll: u16, num_lines: u16) -> u16 {

@@ -61,8 +61,13 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
   // TODO: 
+  //  - Jump to start and end of file  
+  //  - Remember entered search patterns
+  //  - Handle empty search pattern
   //  - Implement jump to next search pattern
-  //  - Handle empty serach pattern
+  //      * Get line numbers for each match while styling
+  //      * Contain text and match state within a type
+  //      * Have an interface for types with text and match state
 
   let file = io::BufReader::new(fs::File::open(&file_path).expect("Could not open file."));
   let num_lines = file.lines().count() as u16;
