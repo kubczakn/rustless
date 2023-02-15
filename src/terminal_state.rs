@@ -12,7 +12,23 @@ use crossterm::{
 use regex::{Regex};
 use cute::c;
 
+use crate::pattern_history::PatternHistory;
+
 const SCREEN_END_OFFSET: u16 = 10;
+
+struct PatternState<'a> {
+  pattern_history: PatternHistory,
+  text: Text<'a>
+}
+
+impl<'a> PatternState<'a> {
+  fn new(content_in: &'a str) -> PatternState<'a> {
+    PatternState {
+      pattern_history: PatternHistory::new(),
+      text: Text::from(content_in.clone())
+    }
+  }
+}
 
 pub struct TerminalState<'a> {
   pub running: bool,
@@ -20,8 +36,8 @@ pub struct TerminalState<'a> {
   scroll_offset: u16,
   num_lines: u16,
   content: &'a str,
-  prompt: String,
-  text: Text<'a>
+  command: String,
+  pattern_state: PatternState<'a>
 }
 
 impl<'a> TerminalState<'a> {
@@ -30,10 +46,10 @@ impl<'a> TerminalState<'a> {
       running: true,
       normal_mode: true,
       scroll_offset: 0,
-      num_lines: num_lines_in, // change to represent bottom of file
+      num_lines: num_lines_in, 
       content: content_in,
-      prompt: String::from(":"),
-      text: Text::from(content_in.clone())
+      command: String::from(":"),
+      pattern_state: PatternState::new(content_in)
     }
   }
 }
@@ -50,8 +66,8 @@ pub fn parse_input(key: KeyCode, terminal_state: TerminalState) -> TerminalState
 pub fn ui<B: Backend> (f: &mut Frame<B>, terminal_state: &TerminalState) {
   let chunks = create_chunks(f);
 
-  let text = terminal_state.text.clone();
-  let prompt = terminal_state.prompt.clone();
+  let text = terminal_state.pattern_state.text.clone();
+  let prompt = terminal_state.command.clone();
 
   if !terminal_state.normal_mode {
     let cursor_x_position = chunks[1].x + prompt.len() as u16;
@@ -75,7 +91,7 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
     KeyCode::Char('G') => terminal_state.scroll_offset = end_of_file_offset(terminal_state.num_lines), 
     KeyCode::Char(c) if command_character(c) => {
       terminal_state.normal_mode = false;
-      terminal_state.prompt = String::from(c);
+      terminal_state.command = String::from(c);
     },
     _ => ()
   };
@@ -85,23 +101,44 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
 fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalState {
   match key {
     KeyCode::Char(c) => {
-      terminal_state.prompt.push(c);
+      terminal_state.command.push(c);
     },
     KeyCode::Backspace => {
-      terminal_state.prompt = pop_back(terminal_state.prompt);
+      if terminal_state.command.len() == 1 {
+        terminal_state = handle_normal_mode_transition(terminal_state);
+      }
+      else {
+        terminal_state.command = pop_back_command(terminal_state.command);
+      }
     },
     KeyCode::Enter => {
-      terminal_state.normal_mode = true;
-      terminal_state.text = get_matched_text(&terminal_state.prompt[1..], terminal_state.content);
-      terminal_state.prompt = String::from(":");
-      return terminal_state;
-    }
+      terminal_state.pattern_state.text = get_matched_text(&terminal_state.command[1..], terminal_state.content);
+      terminal_state.pattern_state.pattern_history.add_pattern(terminal_state.command[1..].to_string());
+      terminal_state = handle_normal_mode_transition(terminal_state);
+    },
+    KeyCode::Up => {
+      if let Some(prior_pattern) = terminal_state.pattern_state.pattern_history.get_prior_pattern() {
+        terminal_state.command = String::from(terminal_state.command.chars().nth(0).unwrap()) + &prior_pattern;
+      }
+    }, 
+    KeyCode::Down => {
+      if let Some(next_pattern) = terminal_state.pattern_state.pattern_history.get_next_pattern() {
+        terminal_state.command = String::from(terminal_state.command.chars().nth(0).unwrap()) + &next_pattern;
+      }
+    },
     _ => ()
   };
   terminal_state
 }
 
-pub fn pop_back(mut command: String) -> String {
+fn handle_normal_mode_transition(mut terminal_state: TerminalState) -> TerminalState {
+  terminal_state.command = String::from(":");
+  terminal_state.normal_mode = true;
+  terminal_state.pattern_state.pattern_history.reset_index();
+  terminal_state
+}
+
+pub fn pop_back_command(mut command: String) -> String {
   if command.len() > 1 {
     command.pop();
   }
