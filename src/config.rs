@@ -61,9 +61,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
   // TODO: 
-  //  - Remember entered search patterns
-  //  - Exit command prompt by hitting backspace with no pattern enterd  
-  //  - Handle empty search pattern
+  //  - Jump between pages
   //  - Implement jump to next search pattern
   //      * Get line numbers for each match while styling
   //      * Contain text and match state within a type

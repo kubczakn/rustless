@@ -202,7 +202,7 @@ fn style_match<'a>(re: &Regex, text: &'a str) -> Span<'a> {
 
 fn style_matches<'a>(pattern: &str, line: &'a str) -> Spans<'a> {
   let pattern_regex = Regex::new(pattern).unwrap();
-  let split_regex = Regex::new(format!(r"{}|.", pattern).as_str()).unwrap();
+  let split_regex = create_split_regex(pattern);
 
   let styled_line: Vec<Span> = split_regex.find_iter(line)
     .map(|elem| style_match(&pattern_regex, elem.as_str()))
@@ -213,4 +213,13 @@ fn style_matches<'a>(pattern: &str, line: &'a str) -> Spans<'a> {
 
 fn get_matched_text<'a>(pattern: &str, content: &'a str) -> Text<'a> {
   Text::from(c![style_matches(pattern, line), for line in content.lines()])
+}
+
+fn create_split_regex(pattern: &str) -> Regex {
+  if pattern.is_empty() {
+    Regex::new(".").unwrap()
+  }
+  else {
+    Regex::new(format!(r"{}|.", pattern).as_str()).unwrap()
+  }
 }
