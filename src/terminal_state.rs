@@ -3,18 +3,18 @@ use std::ops::Bound::*;
 use tui::{
   backend::{Backend},
   terminal::Frame,
-  text::{Text, Span, Spans},
-  style::{Style, Modifier, Color},
+  text::{Text},
   widgets::{Paragraph},
   layout::{Layout, Constraint, Direction, Rect},
 };
 use crossterm::{
   event::{KeyCode},
 };
-use regex::{Regex};
-use cute::c;
 
-use crate::pattern_history::PatternHistory;
+use crate::{
+  pattern_history::PatternHistory,
+  command
+};
 
 const SCREEN_END_OFFSET: u16 = 10;
 
@@ -40,7 +40,7 @@ pub struct TerminalState<'a> {
   scroll_offset: u16,
   num_lines: u16,
   content: &'a str,
-  command: String,
+  command: command::Command,
   pattern_state: PatternState<'a>
 }
 
@@ -52,7 +52,7 @@ impl<'a> TerminalState<'a> {
       scroll_offset: 0,
       num_lines: num_lines_in, 
       content: content_in,
-      command: String::from(":"),
+      command: command::Command::new(':'),
       pattern_state: PatternState::new(content_in)
     }
   }
@@ -71,14 +71,14 @@ pub fn ui<B: Backend> (f: &mut Frame<B>, terminal_state: &TerminalState) {
   let chunks = create_chunks(f);
 
   let text = terminal_state.pattern_state.text.clone();
-  let prompt = terminal_state.command.clone();
+  let command_prompt = terminal_state.command.get_prompt();
 
   if !terminal_state.normal_mode {
-    let cursor_x_position = chunks[1].x + prompt.len() as u16;
+    let cursor_x_position = chunks[1].x + command_prompt.len() as u16;
     f.set_cursor(cursor_x_position, chunks[1].y);
   }
 
-  let command = Paragraph::new(Text::from(prompt));
+  let command = Paragraph::new(Text::from(command_prompt));
   let file_content = Paragraph::new(text)
     .scroll((terminal_state.scroll_offset, 0));
 
@@ -88,8 +88,8 @@ pub fn ui<B: Backend> (f: &mut Frame<B>, terminal_state: &TerminalState) {
 
 fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalState {
   match key {
-    KeyCode::Up => terminal_state.scroll_offset = scroll_up(terminal_state.scroll_offset),
-    KeyCode::Down => terminal_state.scroll_offset = scroll_down(terminal_state.scroll_offset, terminal_state.num_lines),
+    KeyCode::Up | KeyCode::Char('k') => terminal_state.scroll_offset = scroll_up(terminal_state.scroll_offset),
+    KeyCode::Down | KeyCode::Char('j') => terminal_state.scroll_offset = scroll_down(terminal_state.scroll_offset, terminal_state.num_lines),
     KeyCode::Char('q') => terminal_state.running = false,
     KeyCode::Char('g') => terminal_state.scroll_offset = 0,
     KeyCode::Char('G') => terminal_state.scroll_offset = end_of_file_offset(terminal_state.num_lines), 
@@ -111,7 +111,7 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
     },  
     KeyCode::Char(c) if command_character(c) => {
       terminal_state.normal_mode = false;
-      terminal_state.command = String::from(c);
+      terminal_state.command = command::Command::new(c);
     },
     _ => ()
   };
@@ -121,14 +121,14 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
 fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalState {
   match key {
     KeyCode::Char(c) => {
-      terminal_state.command.push(c);
+      terminal_state.command.command_text.push(c);
     },
     KeyCode::Backspace => {
-      if terminal_state.command.len() == 1 {
+      if terminal_state.command.command_text.is_empty() {
         terminal_state = handle_normal_mode_transition(terminal_state);
       }
       else {
-        terminal_state.command = pop_back_command(terminal_state.command);
+        terminal_state.command.command_text.pop();
       }
     },
     KeyCode::Enter => {
@@ -137,12 +137,12 @@ fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalSta
     },
     KeyCode::Up => {
       if let Some(prior_pattern) = terminal_state.pattern_state.pattern_history.get_prior_pattern() {
-        terminal_state.command = String::from(terminal_state.command.chars().nth(0).unwrap()) + &prior_pattern;
+        terminal_state.command.command_text = String::from(&prior_pattern);
       }
     }, 
     KeyCode::Down => {
       if let Some(next_pattern) = terminal_state.pattern_state.pattern_history.get_next_pattern() {
-        terminal_state.command = String::from(terminal_state.command.chars().nth(0).unwrap()) + &next_pattern;
+        terminal_state.command.command_text = String::from(&next_pattern);
       }
     },
     _ => ()
@@ -151,18 +151,13 @@ fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalSta
 }
 
 fn handle_normal_mode_transition(mut terminal_state: TerminalState) -> TerminalState {
-  terminal_state.command = String::from(":");
+  terminal_state.command = command::Command::new(':');
   terminal_state.normal_mode = true;
   terminal_state.pattern_state.pattern_history.reset_index();
   terminal_state
 }
 
-pub fn pop_back_command(mut command: String) -> String {
-  if command.len() > 1 {
-    command.pop();
-  }
-  command
-}
+
 
 fn end_of_file_offset(num_lines: u16) -> u16 {
   (num_lines + SCREEN_END_OFFSET) - get_terminal_height()
@@ -210,69 +205,7 @@ fn get_terminal_height() -> u16 {
 }
 
 fn command_character(character: char) -> bool {
-  character == '/' || character == '?'
-}
-
-fn style_match<'a>(re: &Regex, text: &'a str) -> Span<'a> {
-  if re.is_match(text) {
-    Span::styled(
-      text, 
-      Style::default()
-        .add_modifier(Modifier::BOLD)
-        .fg(Color::Red)
-    )
-  }
-  else {
-    Span::from(text)
-  }
-}
-
-fn style_matches<'a>(pattern: &str, line: &'a str) -> Spans<'a> {
-  let pattern_regex = Regex::new(pattern).unwrap();
-  let split_regex = create_split_regex(pattern);
-
-  let styled_line: Vec<Span> = split_regex.find_iter(line)
-    .map(|elem| style_match(&pattern_regex, elem.as_str()))
-    .collect();
-
-  Spans::from(styled_line)
-}
-
-fn get_match_line_numbers(pattern: &str, content: &str) -> BTreeSet<u16> {
-  let pattern_regex = Regex::new(pattern).unwrap();
-  let mut matched_line_numbers: BTreeSet<u16> = BTreeSet::new();
-  let mut line_number = 0;
-
-  for line in content.lines() {
-    if pattern_regex.is_match(line) {
-      matched_line_numbers.insert(line_number);
-      // println!("{}", line);
-    }
-    line_number += 1;
-  }
-
-  BTreeSet::from(matched_line_numbers)
-}
-
-fn get_matched_text<'a>(pattern: &str, content: &'a str) -> Text<'a> {
-  Text::from(c![style_matches(pattern, line), for line in content.lines()])
-}
-
-fn update_pattern_state<'a>(mut terminal_state: TerminalState) -> TerminalState {
-  terminal_state.pattern_state.text = get_matched_text(&terminal_state.command[1..], terminal_state.content);
-  terminal_state.pattern_state.pattern_history.add_pattern(terminal_state.command[1..].to_string());
-  terminal_state.pattern_state.next_pattern = get_match_line_numbers(&terminal_state.command[1..], terminal_state.content);
-
-  terminal_state
-}
-
-fn create_split_regex(pattern: &str) -> Regex {
-  if pattern.is_empty() {
-    Regex::new(".").unwrap()
-  }
-  else {
-    Regex::new(format!(r"{}|.", pattern).as_str()).unwrap()
-  }
+  character == '/' || character == '?' || character == '&'
 }
 
 fn move_forward_page(num_lines: u16, scroll: u16) -> u16 {
@@ -286,4 +219,19 @@ fn move_back_page(scroll: u16) -> u16 {
   else {
     0
   }
+}
+
+fn update_pattern_state<'a>(mut terminal_state: TerminalState) -> TerminalState {
+  let display_only_matching_lines = terminal_state.command.prompt == '&';
+  if display_only_matching_lines {
+    terminal_state.pattern_state.text = command::get_match_lines(&terminal_state.command.command_text, terminal_state.content);
+  }
+  else {
+    terminal_state.pattern_state.text = command::get_bolded_match_text(&terminal_state.command.command_text, terminal_state.content);
+  }
+
+  terminal_state.pattern_state.pattern_history.add_pattern(terminal_state.command.command_text.to_string());
+  terminal_state.pattern_state.next_pattern = command::get_match_line_numbers(&terminal_state.command.command_text, terminal_state.content);
+
+  terminal_state
 }

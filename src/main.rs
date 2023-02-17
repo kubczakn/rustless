@@ -1,13 +1,13 @@
 use std::env;
 use std::process;
 
-use rustless::config::{
-  Config,
+use rustless::app::{
+  App,
   run
 };
 
 fn main() {
-  let config = Config::build(env::args()).unwrap_or_else(|err| {
+  let config = App::build(env::args()).unwrap_or_else(|err| {
     eprintln!("Problem parsing arguments: {}", err);
     process::exit(1);
   });

@@ -18,14 +18,14 @@ use crossterm::{
 
 use crate::terminal_state::{TerminalState, parse_input, ui};
 
-pub struct Config {
+pub struct App {
   pub file_path: String,
 }
 
-impl Config {
+impl App {
   pub fn build(
     mut args: impl Iterator<Item = String>,
-  ) -> Result<Config, &'static str> {
+  ) -> Result<App, &'static str> {
 
     args.next();
 
@@ -34,13 +34,13 @@ impl Config {
       None => return Err("Didn't get a filepath.")
     };
   
-    Ok(Config{
+    Ok(App{
       file_path,
     })
   }
 }
 
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
+pub fn run(config: App) -> Result<(), Box<dyn Error>> {
   // setup terminal
   enable_raw_mode()?;
   let mut stdout = io::stdout();
@@ -63,8 +63,7 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
   // TODO: 
-  //  - Way to clear current pattern
-  //  - Clean up code for handing key presses
+  //  - Ability to change files
   //  - Figure out how to reduce scroll lag?
 
   let file = io::BufReader::new(fs::File::open(&file_path).expect("Could not open file."));
