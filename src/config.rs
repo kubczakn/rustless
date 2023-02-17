@@ -63,10 +63,9 @@ pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
 
 fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
   // TODO: 
-  //  - Jump between pages
-  //    * Navigate up or down file by a factor of the terminal height
   //  - Way to clear current pattern
-  //  - Add timeout to reduce scroll lag?
+  //  - Clean up code for handing key presses
+  //  - Figure out how to reduce scroll lag?
 
   let file = io::BufReader::new(fs::File::open(&file_path).expect("Could not open file."));
   let num_lines = file.lines().count() as u16;

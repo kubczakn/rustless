@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, cmp::min};
 use std::ops::Bound::*;
 use tui::{
   backend::{Backend},
@@ -103,6 +103,12 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
         terminal_state.scroll_offset = previous_match_scroll_offset
       }
     },
+    KeyCode::Char('b') => {
+      terminal_state.scroll_offset = move_back_page(terminal_state.scroll_offset)
+    },
+    KeyCode::Char('B') => {
+      terminal_state.scroll_offset = move_forward_page(terminal_state.num_lines, terminal_state.scroll_offset)
+    },  
     KeyCode::Char(c) if command_character(c) => {
       terminal_state.normal_mode = false;
       terminal_state.command = String::from(c);
@@ -266,5 +272,18 @@ fn create_split_regex(pattern: &str) -> Regex {
   }
   else {
     Regex::new(format!(r"{}|.", pattern).as_str()).unwrap()
+  }
+}
+
+fn move_forward_page(num_lines: u16, scroll: u16) -> u16 {
+  min(end_of_file_offset(num_lines), scroll + get_terminal_height())
+}
+
+fn move_back_page(scroll: u16) -> u16 {
+  if let Some(subtracted_scroll) = scroll.checked_sub(get_terminal_height()) {
+    subtracted_scroll
+  }
+  else {
+    0
   }
 }
