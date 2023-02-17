@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+use std::ops::Bound::*;
 use tui::{
   backend::{Backend},
   terminal::Frame,
@@ -18,14 +20,16 @@ const SCREEN_END_OFFSET: u16 = 10;
 
 struct PatternState<'a> {
   pattern_history: PatternHistory,
-  text: Text<'a>
+  text: Text<'a>,
+  next_pattern: BTreeSet<u16>
 }
 
 impl<'a> PatternState<'a> {
   fn new(content_in: &'a str) -> PatternState<'a> {
     PatternState {
       pattern_history: PatternHistory::new(),
-      text: Text::from(content_in.clone())
+      text: Text::from(content_in.clone()),
+      next_pattern: BTreeSet::new()
     }
   }
 }
@@ -89,6 +93,16 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
     KeyCode::Char('q') => terminal_state.running = false,
     KeyCode::Char('g') => terminal_state.scroll_offset = 0,
     KeyCode::Char('G') => terminal_state.scroll_offset = end_of_file_offset(terminal_state.num_lines), 
+    KeyCode::Char('n') => {
+      if let Some(next_match_scroll_offset) = scroll_to_next_match(terminal_state.scroll_offset, &terminal_state.pattern_state.next_pattern) {
+        terminal_state.scroll_offset = next_match_scroll_offset
+      }
+    },
+    KeyCode::Char('N') => {
+      if let Some(previous_match_scroll_offset) = scroll_to_prior_match(terminal_state.scroll_offset, &terminal_state.pattern_state.next_pattern) {
+        terminal_state.scroll_offset = previous_match_scroll_offset
+      }
+    },
     KeyCode::Char(c) if command_character(c) => {
       terminal_state.normal_mode = false;
       terminal_state.command = String::from(c);
@@ -112,8 +126,7 @@ fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalSta
       }
     },
     KeyCode::Enter => {
-      terminal_state.pattern_state.text = get_matched_text(&terminal_state.command[1..], terminal_state.content);
-      terminal_state.pattern_state.pattern_history.add_pattern(terminal_state.command[1..].to_string());
+      terminal_state = update_pattern_state(terminal_state);
       terminal_state = handle_normal_mode_transition(terminal_state);
     },
     KeyCode::Up => {
@@ -164,6 +177,14 @@ fn scroll_up(mut scroll: u16) -> u16 {
   scroll
 }
 
+fn scroll_to_next_match(curr_offset: u16, match_line_numbers: &BTreeSet<u16>) -> Option<u16> {
+  match_line_numbers.range((Excluded(curr_offset), Unbounded)).next().copied()
+}
+
+fn scroll_to_prior_match(curr_offset: u16, match_line_numbers: &BTreeSet<u16>) -> Option<u16> {
+  match_line_numbers.range((Unbounded, Excluded(curr_offset))).next_back().copied()
+}
+
 fn create_chunks<B: Backend>(f: &Frame<B>) -> Vec<Rect> {
   Layout::default()
     .direction(Direction::Vertical)
@@ -211,8 +232,32 @@ fn style_matches<'a>(pattern: &str, line: &'a str) -> Spans<'a> {
   Spans::from(styled_line)
 }
 
+fn get_match_line_numbers(pattern: &str, content: &str) -> BTreeSet<u16> {
+  let pattern_regex = Regex::new(pattern).unwrap();
+  let mut matched_line_numbers: BTreeSet<u16> = BTreeSet::new();
+  let mut line_number = 0;
+
+  for line in content.lines() {
+    if pattern_regex.is_match(line) {
+      matched_line_numbers.insert(line_number);
+      // println!("{}", line);
+    }
+    line_number += 1;
+  }
+
+  BTreeSet::from(matched_line_numbers)
+}
+
 fn get_matched_text<'a>(pattern: &str, content: &'a str) -> Text<'a> {
   Text::from(c![style_matches(pattern, line), for line in content.lines()])
+}
+
+fn update_pattern_state<'a>(mut terminal_state: TerminalState) -> TerminalState {
+  terminal_state.pattern_state.text = get_matched_text(&terminal_state.command[1..], terminal_state.content);
+  terminal_state.pattern_state.pattern_history.add_pattern(terminal_state.command[1..].to_string());
+  terminal_state.pattern_state.next_pattern = get_match_line_numbers(&terminal_state.command[1..], terminal_state.content);
+
+  terminal_state
 }
 
 fn create_split_regex(pattern: &str) -> Regex {
