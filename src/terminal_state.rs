@@ -1,7 +1,6 @@
 use std::{
   collections::BTreeSet, 
   cmp::min,
-  
 };
 use std::ops::Bound::*;
 use tui::{
@@ -30,12 +29,12 @@ pub struct TerminalState<'a> {
 }
 
 impl<'a> TerminalState<'a> {
-  pub fn new(file_path: String) -> TerminalState<'a> {
+  pub fn new(content: String) -> TerminalState<'a> {
     TerminalState {
       running: true,
       scroll_offset: 0,
       command: command::Command::new(command::CommandCharacter::Normal),
-      text_state: TextState::new(file_path)
+      text_state: TextState::new(content)
     }
   }
 

@@ -1,4 +1,5 @@
 use std::{
+  fs,
   io,
   error::Error, 
   thread,
@@ -61,11 +62,12 @@ pub fn run(config: App) -> Result<(), Box<dyn Error>> {
 
 fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
   // TODO: 
-  //  - Ability to change files
   //  - Add 'help' option to display navigation and command options
 
   let ten_millis = time::Duration::from_millis(10);
-  let mut terminal_state = TerminalState::new(file_path);
+  let mut terminal_state = TerminalState::new(
+    fs::read_to_string(file_path).expect("Could not open file.")
+  );
 
   while terminal_state.running {
     terminal.draw(|f| ui(f, &terminal_state))?;

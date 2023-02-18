@@ -14,36 +14,34 @@ pub struct TextState<'a> {
   pub pattern_history: PatternHistory,
   pub next_pattern: BTreeSet<u16>,
   pub text: Text<'a>,
-  pub file_path: String,
+  pub content: String,
 }
 
 impl<'a> TextState<'a> {
-  pub fn new(file_path_in: String) -> TextState<'a> {
+  pub fn new(content_in: String) -> TextState<'a> {
     TextState {
       pattern_history: PatternHistory::new(),
       next_pattern: BTreeSet::new(),
-      text: Text::from(fs::read_to_string(&file_path_in).expect("Could not open file.")),
-      file_path: file_path_in,
+      text: Text::from(content_in.clone()),
+      content: content_in,
     }
   }
 
   pub fn match_lines(self, pattern: &str) -> TextState<'a> {
-    let content = fs::read_to_string(&self.file_path).expect("Could not open file.");
     TextState {
       pattern_history: self.pattern_history.add_pattern(pattern.to_string()),
-      next_pattern: get_match_line_numbers(&content, pattern),
-      text: get_match_lines(content, pattern),
-      file_path: self.file_path,
+      next_pattern: get_match_line_numbers(&self.content, pattern),
+      text: get_match_lines(self.content.clone(), pattern),
+      content: self.content,
     }
   }
 
   pub fn perform_search(self, pattern: &str) -> TextState<'a> {
-    let content = fs::read_to_string(&self.file_path).expect("Could not open file.");
     TextState {
       pattern_history: self.pattern_history.add_pattern(pattern.to_string()),
-      next_pattern: get_match_line_numbers(&content, pattern),
-      text: get_bolded_match_text(content, pattern),
-      file_path: self.file_path,
+      next_pattern: get_match_line_numbers(&self.content, pattern),
+      text: get_bolded_match_text(self.content.clone(), pattern),
+      content: self.content,
     }
   }
 
@@ -53,9 +51,9 @@ impl<'a> TextState<'a> {
       Ok(content) => {
         TextState {
           pattern_history: self.pattern_history,
-          file_path: file_path.to_string(),
-          text: Text::from(content),
-          next_pattern: self.next_pattern
+          next_pattern: self.next_pattern,
+          text: Text::from(content.clone()),
+          content: content, 
         }
       },
       Err(_) => self
