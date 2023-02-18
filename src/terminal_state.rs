@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, cmp::min};
+use std::{
+  collections::BTreeSet, 
+  cmp::min,
+  
+};
 use std::ops::Bound::*;
 use tui::{
   backend::{Backend},
@@ -12,47 +16,31 @@ use crossterm::{
 };
 
 use crate::{
-  pattern_history::PatternHistory,
+  text_state::TextState,
   command
 };
 
 const PAGE_HEIGHT_OFFSET: u16 = 1; // account for prompt 
 
-struct TextState<'a> {
-  pattern_history: PatternHistory,
-  text: Text<'a>,
-  next_pattern: BTreeSet<u16>
-}
-
-impl<'a> TextState<'a> {
-  fn new(content_in: &'a str) -> TextState<'a> {
-    TextState {
-      pattern_history: PatternHistory::new(),
-      text: Text::from(content_in.clone()),
-      next_pattern: BTreeSet::new()
-    }
-  }
-}
-
 pub struct TerminalState<'a> {
   pub running: bool,
-  pub normal_mode: bool,
   scroll_offset: u16,
-  content: &'a str,
   command: command::Command,
   text_state: TextState<'a>
 }
 
 impl<'a> TerminalState<'a> {
-  pub fn new(content_in: &'a str) -> TerminalState<'a> {
+  pub fn new(file_path: String) -> TerminalState<'a> {
     TerminalState {
       running: true,
-      normal_mode: true,
       scroll_offset: 0,
-      content: content_in,
-      command: command::Command::new(':'),
-      text_state: TextState::new(content_in)
+      command: command::Command::new(command::CommandCharacter::Normal),
+      text_state: TextState::new(file_path)
     }
+  }
+
+  pub fn normal_mode(&self) -> bool {
+    self.command.prompt == command::CommandCharacter::Normal
   }
 
   fn line_count(&self) -> usize {
@@ -61,7 +49,7 @@ impl<'a> TerminalState<'a> {
 }
 
 pub fn parse_input(key: KeyCode, terminal_state: TerminalState) -> TerminalState {
-  if terminal_state.normal_mode {
+  if terminal_state.normal_mode() {
     parse_normal(key, terminal_state)    
   }
   else {
@@ -79,7 +67,7 @@ pub fn ui<B: Backend> (f: &mut Frame<B>, terminal_state: &TerminalState) {
   let text = Text::from(lines_to_display);
   let command_prompt = terminal_state.command.get_prompt();
 
-  if !terminal_state.normal_mode {
+  if !terminal_state.normal_mode() {
     let cursor_x_position = chunks[1].x + command_prompt.len() as u16;
     f.set_cursor(cursor_x_position, chunks[1].y);
   }
@@ -116,9 +104,10 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
     KeyCode::Char('B') => {
       terminal_state.scroll_offset = move_forward_page(terminal_state.line_count() as u16, terminal_state.scroll_offset)
     },  
-    KeyCode::Char(c) if command_character(c) => {
-      terminal_state.normal_mode = false;
-      terminal_state.command = command::Command::new(c);
+    KeyCode::Char(c) => {
+      if let Some(command_character) = command::CommandCharacter::command_character(c) {
+        terminal_state.command = command::Command::new(command_character);
+      }
     },
     _ => ()
   };
@@ -158,8 +147,7 @@ fn parse_command<'a>(key: KeyCode, mut terminal_state: TerminalState<'a>) -> Ter
 }
 
 fn handle_normal_mode_transition(mut terminal_state: TerminalState) -> TerminalState {
-  terminal_state.command = command::Command::new(':');
-  terminal_state.normal_mode = true;
+  terminal_state.command = command::Command::new(command::CommandCharacter::Normal);
   terminal_state.text_state.pattern_history.reset_index();
   terminal_state
 }
@@ -214,10 +202,6 @@ fn get_page_height() -> u16 {
   (terminal_height as u16) - PAGE_HEIGHT_OFFSET
 }
 
-fn command_character(character: char) -> bool {
-  character == '/' || character == '?' || character == '&'
-}
-
 fn move_forward_page(num_lines: u16, scroll: u16) -> u16 {
   min(end_of_file_offset(num_lines), scroll + get_page_height())
 }
@@ -231,18 +215,21 @@ fn move_back_page(scroll: u16) -> u16 {
   }
 }
 
-fn update_text_state<'a>(mut terminal_state: TerminalState) -> TerminalState {
-  let display_only_matching_lines = terminal_state.command.prompt == '&';
-  if display_only_matching_lines {
-    terminal_state.text_state.text = command::get_match_lines(&terminal_state.command.command_text, terminal_state.content);
-    terminal_state.scroll_offset = 0;
+fn update_text_state<'a>(mut terminal_state: TerminalState<'a>) -> TerminalState<'a> {
+  match terminal_state.command.prompt {
+    command::CommandCharacter::MatchLines => {
+      terminal_state.text_state = terminal_state.text_state.match_lines(&terminal_state.command.command_text);
+      terminal_state.scroll_offset = 0;
+    },
+    command::CommandCharacter::SearchForward | command::CommandCharacter::SearchBackwards => {
+      terminal_state.text_state = terminal_state.text_state.perform_search(&terminal_state.command.command_text);
+    },
+    command::CommandCharacter::ChangeFile => {
+      terminal_state.text_state = terminal_state.text_state.change_file(&terminal_state.command.command_text);
+      terminal_state.scroll_offset = 0;
+    },
+    command::CommandCharacter::Normal => ()
   }
-  else {
-    terminal_state.text_state.text = command::get_bolded_match_text(&terminal_state.command.command_text, terminal_state.content);
-  }
-
-  terminal_state.text_state.pattern_history.add_pattern(terminal_state.command.command_text.to_string());
-  terminal_state.text_state.next_pattern = command::get_match_line_numbers(&terminal_state.command.command_text, terminal_state.content);
 
   terminal_state
 }

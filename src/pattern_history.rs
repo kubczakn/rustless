@@ -17,10 +17,12 @@ impl PatternHistory {
     self.current_pattern_index = 0
   }
 
-  pub fn add_pattern(&mut self, pattern_in: String) {
+  pub fn add_pattern(mut self, pattern_in: String) -> PatternHistory {
     self.prior_patterns.pop_front();
     self.prior_patterns.push_front(pattern_in);
-    self.prior_patterns.push_front(String::from(""))
+    self.prior_patterns.push_front(String::from(""));
+
+    self
   }
 
   pub fn get_prior_pattern(&mut self) -> Option<String> {

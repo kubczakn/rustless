@@ -1,5 +1,4 @@
 use std::{
-  fs,
   io,
   error::Error, 
   thread,
@@ -65,9 +64,8 @@ fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> i
   //  - Ability to change files
   //  - Add 'help' option to display navigation and command options
 
-  let content = fs::read_to_string(&file_path).expect("Could not open file.");
-  let mut terminal_state = TerminalState::new(&content);
   let ten_millis = time::Duration::from_millis(10);
+  let mut terminal_state = TerminalState::new(file_path);
 
   while terminal_state.running {
     terminal.draw(|f| ui(f, &terminal_state))?;
@@ -76,7 +74,7 @@ fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> i
       terminal_state = parse_input(key.code, terminal_state)    
     }
 
-    if terminal_state.normal_mode {
+    if terminal_state.normal_mode() {
       terminal.hide_cursor().unwrap();
     }
 
