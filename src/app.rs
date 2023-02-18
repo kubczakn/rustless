@@ -1,7 +1,6 @@
 use std::{
   fs,
   io,
-  io::{BufRead},
   error::Error, 
   thread,
   time
@@ -64,13 +63,10 @@ pub fn run(config: App) -> Result<(), Box<dyn Error>> {
 fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
   // TODO: 
   //  - Ability to change files
-  //  - Figure out how to reduce scroll lag?
+  //  - Add 'help' option to display navigation and command options
 
-  let file = io::BufReader::new(fs::File::open(&file_path).expect("Could not open file."));
-  let num_lines = file.lines().count() as u16;
   let content = fs::read_to_string(&file_path).expect("Could not open file.");
-
-  let mut terminal_state = TerminalState::new(num_lines, &content);
+  let mut terminal_state = TerminalState::new(&content);
   let ten_millis = time::Duration::from_millis(10);
 
   while terminal_state.running {

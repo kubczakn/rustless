@@ -16,17 +16,17 @@ use crate::{
   command
 };
 
-const SCREEN_END_OFFSET: u16 = 10;
+const PAGE_HEIGHT_OFFSET: u16 = 1; // account for prompt 
 
-struct PatternState<'a> {
+struct TextState<'a> {
   pattern_history: PatternHistory,
   text: Text<'a>,
   next_pattern: BTreeSet<u16>
 }
 
-impl<'a> PatternState<'a> {
-  fn new(content_in: &'a str) -> PatternState<'a> {
-    PatternState {
+impl<'a> TextState<'a> {
+  fn new(content_in: &'a str) -> TextState<'a> {
+    TextState {
       pattern_history: PatternHistory::new(),
       text: Text::from(content_in.clone()),
       next_pattern: BTreeSet::new()
@@ -38,23 +38,25 @@ pub struct TerminalState<'a> {
   pub running: bool,
   pub normal_mode: bool,
   scroll_offset: u16,
-  num_lines: u16,
   content: &'a str,
   command: command::Command,
-  pattern_state: PatternState<'a>
+  text_state: TextState<'a>
 }
 
 impl<'a> TerminalState<'a> {
-  pub fn new(num_lines_in: u16, content_in: &'a str) -> TerminalState<'a> {
+  pub fn new(content_in: &'a str) -> TerminalState<'a> {
     TerminalState {
       running: true,
       normal_mode: true,
       scroll_offset: 0,
-      num_lines: num_lines_in, 
       content: content_in,
       command: command::Command::new(':'),
-      pattern_state: PatternState::new(content_in)
+      text_state: TextState::new(content_in)
     }
+  }
+
+  fn line_count(&self) -> usize {
+    self.text_state.text.lines.len()
   }
 }
 
@@ -70,7 +72,11 @@ pub fn parse_input(key: KeyCode, terminal_state: TerminalState) -> TerminalState
 pub fn ui<B: Backend> (f: &mut Frame<B>, terminal_state: &TerminalState) {
   let chunks = create_chunks(f);
 
-  let text = terminal_state.pattern_state.text.clone();
+  let line_start = min(terminal_state.scroll_offset as usize, terminal_state.line_count());
+  let line_end = min((get_page_height() as usize) + line_start, terminal_state.line_count());
+
+  let lines_to_display = Vec::from(&terminal_state.text_state.text.lines[line_start..line_end]);
+  let text = Text::from(lines_to_display);
   let command_prompt = terminal_state.command.get_prompt();
 
   if !terminal_state.normal_mode {
@@ -79,8 +85,7 @@ pub fn ui<B: Backend> (f: &mut Frame<B>, terminal_state: &TerminalState) {
   }
 
   let command = Paragraph::new(Text::from(command_prompt));
-  let file_content = Paragraph::new(text)
-    .scroll((terminal_state.scroll_offset, 0));
+  let file_content = Paragraph::new(text);
 
   f.render_widget(file_content, chunks[0]);
   f.render_widget(command, chunks[1]);
@@ -89,17 +94,19 @@ pub fn ui<B: Backend> (f: &mut Frame<B>, terminal_state: &TerminalState) {
 fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalState {
   match key {
     KeyCode::Up | KeyCode::Char('k') => terminal_state.scroll_offset = scroll_up(terminal_state.scroll_offset),
-    KeyCode::Down | KeyCode::Char('j') => terminal_state.scroll_offset = scroll_down(terminal_state.scroll_offset, terminal_state.num_lines),
+    KeyCode::Down | KeyCode::Char('j') => {
+      terminal_state.scroll_offset = scroll_down(terminal_state.scroll_offset, terminal_state.line_count() as u16)
+    },
     KeyCode::Char('q') => terminal_state.running = false,
     KeyCode::Char('g') => terminal_state.scroll_offset = 0,
-    KeyCode::Char('G') => terminal_state.scroll_offset = end_of_file_offset(terminal_state.num_lines), 
+    KeyCode::Char('G') => terminal_state.scroll_offset = end_of_file_offset(terminal_state.line_count() as u16), 
     KeyCode::Char('n') => {
-      if let Some(next_match_scroll_offset) = scroll_to_next_match(terminal_state.scroll_offset, &terminal_state.pattern_state.next_pattern) {
+      if let Some(next_match_scroll_offset) = scroll_to_next_match(terminal_state.scroll_offset, &terminal_state.text_state.next_pattern) {
         terminal_state.scroll_offset = next_match_scroll_offset
       }
     },
     KeyCode::Char('N') => {
-      if let Some(previous_match_scroll_offset) = scroll_to_prior_match(terminal_state.scroll_offset, &terminal_state.pattern_state.next_pattern) {
+      if let Some(previous_match_scroll_offset) = scroll_to_prior_match(terminal_state.scroll_offset, &terminal_state.text_state.next_pattern) {
         terminal_state.scroll_offset = previous_match_scroll_offset
       }
     },
@@ -107,7 +114,7 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
       terminal_state.scroll_offset = move_back_page(terminal_state.scroll_offset)
     },
     KeyCode::Char('B') => {
-      terminal_state.scroll_offset = move_forward_page(terminal_state.num_lines, terminal_state.scroll_offset)
+      terminal_state.scroll_offset = move_forward_page(terminal_state.line_count() as u16, terminal_state.scroll_offset)
     },  
     KeyCode::Char(c) if command_character(c) => {
       terminal_state.normal_mode = false;
@@ -118,7 +125,7 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
   terminal_state
 }
 
-fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalState {
+fn parse_command<'a>(key: KeyCode, mut terminal_state: TerminalState<'a>) -> TerminalState<'a> {
   match key {
     KeyCode::Char(c) => {
       terminal_state.command.command_text.push(c);
@@ -132,16 +139,16 @@ fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalSta
       }
     },
     KeyCode::Enter => {
-      terminal_state = update_pattern_state(terminal_state);
+      terminal_state = update_text_state(terminal_state);
       terminal_state = handle_normal_mode_transition(terminal_state);
     },
     KeyCode::Up => {
-      if let Some(prior_pattern) = terminal_state.pattern_state.pattern_history.get_prior_pattern() {
+      if let Some(prior_pattern) = terminal_state.text_state.pattern_history.get_prior_pattern() {
         terminal_state.command.command_text = String::from(&prior_pattern);
       }
     }, 
     KeyCode::Down => {
-      if let Some(next_pattern) = terminal_state.pattern_state.pattern_history.get_next_pattern() {
+      if let Some(next_pattern) = terminal_state.text_state.pattern_history.get_next_pattern() {
         terminal_state.command.command_text = String::from(&next_pattern);
       }
     },
@@ -153,18 +160,21 @@ fn parse_command(key: KeyCode, mut terminal_state: TerminalState) -> TerminalSta
 fn handle_normal_mode_transition(mut terminal_state: TerminalState) -> TerminalState {
   terminal_state.command = command::Command::new(':');
   terminal_state.normal_mode = true;
-  terminal_state.pattern_state.pattern_history.reset_index();
+  terminal_state.text_state.pattern_history.reset_index();
   terminal_state
 }
 
-
-
 fn end_of_file_offset(num_lines: u16) -> u16 {
-  (num_lines + SCREEN_END_OFFSET) - get_terminal_height()
+  if let Some(end_of_file_offset) = num_lines.checked_sub(get_page_height()) {
+    end_of_file_offset
+  }
+  else {
+    0
+  }
 }
 
 fn scroll_down(mut scroll: u16, num_lines: u16) -> u16 {
-  let above_bottom = (scroll + get_terminal_height()) <= num_lines + SCREEN_END_OFFSET;
+  let above_bottom = (scroll + 1) <= end_of_file_offset(num_lines);
   if above_bottom {
     scroll += 1
   }
@@ -191,17 +201,17 @@ fn create_chunks<B: Backend>(f: &Frame<B>) -> Vec<Rect> {
     .direction(Direction::Vertical)
     .constraints(
         [
-            Constraint::Percentage(90),
-            Constraint::Percentage(10),
+            Constraint::Percentage(99),
+            Constraint::Percentage(1),
         ]
         .as_ref(),
     )
     .split(f.size())
 }
 
-fn get_terminal_height() -> u16 {
+fn get_page_height() -> u16 {
   let (_, terminal_height) = term_size::dimensions().unwrap();
-  terminal_height as u16
+  (terminal_height as u16) - PAGE_HEIGHT_OFFSET
 }
 
 fn command_character(character: char) -> bool {
@@ -209,11 +219,11 @@ fn command_character(character: char) -> bool {
 }
 
 fn move_forward_page(num_lines: u16, scroll: u16) -> u16 {
-  min(end_of_file_offset(num_lines), scroll + get_terminal_height())
+  min(end_of_file_offset(num_lines), scroll + get_page_height())
 }
 
 fn move_back_page(scroll: u16) -> u16 {
-  if let Some(subtracted_scroll) = scroll.checked_sub(get_terminal_height()) {
+  if let Some(subtracted_scroll) = scroll.checked_sub(get_page_height()) {
     subtracted_scroll
   }
   else {
@@ -221,17 +231,18 @@ fn move_back_page(scroll: u16) -> u16 {
   }
 }
 
-fn update_pattern_state<'a>(mut terminal_state: TerminalState) -> TerminalState {
+fn update_text_state<'a>(mut terminal_state: TerminalState) -> TerminalState {
   let display_only_matching_lines = terminal_state.command.prompt == '&';
   if display_only_matching_lines {
-    terminal_state.pattern_state.text = command::get_match_lines(&terminal_state.command.command_text, terminal_state.content);
+    terminal_state.text_state.text = command::get_match_lines(&terminal_state.command.command_text, terminal_state.content);
+    terminal_state.scroll_offset = 0;
   }
   else {
-    terminal_state.pattern_state.text = command::get_bolded_match_text(&terminal_state.command.command_text, terminal_state.content);
+    terminal_state.text_state.text = command::get_bolded_match_text(&terminal_state.command.command_text, terminal_state.content);
   }
 
-  terminal_state.pattern_state.pattern_history.add_pattern(terminal_state.command.command_text.to_string());
-  terminal_state.pattern_state.next_pattern = command::get_match_line_numbers(&terminal_state.command.command_text, terminal_state.content);
+  terminal_state.text_state.pattern_history.add_pattern(terminal_state.command.command_text.to_string());
+  terminal_state.text_state.next_pattern = command::get_match_line_numbers(&terminal_state.command.command_text, terminal_state.content);
 
   terminal_state
 }
