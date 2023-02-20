@@ -1,8 +1,7 @@
 #[derive(PartialEq)]
 pub enum CommandCharacter {
   Normal,
-  SearchForward,
-  SearchBackwards,
+  Search,
   MatchLines,
   ChangeFile
 }
@@ -11,8 +10,7 @@ impl CommandCharacter {
   pub fn as_char(&self) -> char {
     match self {
       CommandCharacter::Normal => ':',
-      CommandCharacter::SearchForward => '/',
-      CommandCharacter::SearchBackwards => '?',
+      CommandCharacter::Search => '/',
       CommandCharacter::MatchLines => '&',
       CommandCharacter::ChangeFile => ';'
     }
@@ -21,8 +19,7 @@ impl CommandCharacter {
   pub fn command_character(character: char) -> Option<CommandCharacter> {
     match character {
       ':' => Some(CommandCharacter::Normal),
-      '/' => Some(CommandCharacter::SearchForward),
-      '?' => Some(CommandCharacter::SearchBackwards),
+      '/' => Some(CommandCharacter::Search),
       '&' => Some(CommandCharacter::MatchLines),
       ';' => Some(CommandCharacter::ChangeFile),
       _ => None

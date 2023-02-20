@@ -15,10 +15,13 @@ use crossterm::{
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
-use crate::terminal_state::{TerminalState, parse_input, ui};
+use crate::{
+  terminal_state::{TerminalState, parse_input, ui},
+  help
+};
 
 pub struct App {
-  pub file_path: String,
+  pub input: String, // either a file path or 'help'
 }
 
 impl App {
@@ -30,11 +33,11 @@ impl App {
 
     let file_path = match args.next() {
       Some(arg) => arg,
-      None => return Err("Didn't get a filepath.")
+      None => return Err(help::USAGE)
     };
   
     Ok(App{
-      file_path,
+      input: file_path,
     })
   }
 }
@@ -47,7 +50,7 @@ pub fn run(config: App) -> Result<(), Box<dyn Error>> {
   let backend = CrosstermBackend::new(stdout);
   let mut terminal = Terminal::new(backend)?;
 
-  let _res = run_terminal(&mut terminal, config.file_path);
+  run_terminal(&mut terminal, config.input)?;
 
   // restore terminal 
   disable_raw_mode()?;
@@ -60,14 +63,19 @@ pub fn run(config: App) -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
-fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, file_path : String) -> io::Result<()> {
-  // TODO: 
-  //  - Add 'help' option to display navigation and command options
+fn create_initial_display(input: String) -> String {
+  let display_help_screen = input == "help";
+  if display_help_screen {
+    String::from(help::HELP)
+  }
+  else {
+    fs::read_to_string(input).expect("Could not open file.")
+  }
+}
 
+fn run_terminal<B: Backend>(terminal: &mut Terminal<B>, input : String) -> io::Result<()> {
   let ten_millis = time::Duration::from_millis(10);
-  let mut terminal_state = TerminalState::new(
-    fs::read_to_string(file_path).expect("Could not open file.")
-  );
+  let mut terminal_state = TerminalState::new(create_initial_display(input));
 
   while terminal_state.running {
     terminal.draw(|f| ui(f, &terminal_state))?;

@@ -5,7 +5,11 @@ Uses [tui-rs](https://github.com/fdehau/tui-rs) as the underlying tui framework.
 # Usage
 Run with cargo, taking in a text file as input:
 ```
-cargo run main.rs -- <text-file.txt>
+cargo run -- [FILENAME]
+```
+For help, run:
+```
+cargo run -- help
 ```
 
 # Contribution

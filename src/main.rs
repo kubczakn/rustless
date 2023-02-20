@@ -8,7 +8,7 @@ use rustless::app::{
 
 fn main() {
   let config = App::build(env::args()).unwrap_or_else(|err| {
-    eprintln!("Problem parsing arguments: {}", err);
+    eprintln!("{}", err);
     process::exit(1);
   });
 

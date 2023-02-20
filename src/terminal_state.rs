@@ -100,7 +100,7 @@ fn parse_normal(key: KeyCode, mut terminal_state: TerminalState) -> TerminalStat
     KeyCode::Char('b') => {
       terminal_state.scroll_offset = move_back_page(terminal_state.scroll_offset)
     },
-    KeyCode::Char('B') => {
+    KeyCode::Char('f') => {
       terminal_state.scroll_offset = move_forward_page(terminal_state.line_count() as u16, terminal_state.scroll_offset)
     },  
     KeyCode::Char(c) => {
@@ -220,7 +220,7 @@ fn update_text_state<'a>(mut terminal_state: TerminalState<'a>) -> TerminalState
       terminal_state.text_state = terminal_state.text_state.match_lines(&terminal_state.command.command_text);
       terminal_state.scroll_offset = 0;
     },
-    command::CommandCharacter::SearchForward | command::CommandCharacter::SearchBackwards => {
+    command::CommandCharacter::Search => {
       terminal_state.text_state = terminal_state.text_state.perform_search(&terminal_state.command.command_text);
     },
     command::CommandCharacter::ChangeFile => {
